@@ -15,7 +15,7 @@ async function setToken(token: string): Promise<void> {
 
 // ── Message handler ───────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(
-  (msg: ExtMessage, _sender, sendResponse) => {
+  (msg: ExtMessage, _sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void): boolean | undefined => {
     if (msg.type === "GET_AUTH_TOKEN") {
       getToken().then(sendResponse);
       return true; // keep channel open for async response

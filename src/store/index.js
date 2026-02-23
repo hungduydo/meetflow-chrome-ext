@@ -31,7 +31,7 @@ export const useMeetFlowStore = create((set) => ({
     pendingReply: null,
     triggerText: null,
     isLoadingReply: false,
-    setPendingReply: (pendingReply, triggerText = null) => set({ pendingReply, triggerText, isLoadingReply: false }),
+    setPendingReply: (pendingReply, triggerText = undefined) => set({ pendingReply, triggerText: triggerText ?? null, isLoadingReply: false }),
     setLoadingReply: (isLoadingReply) => set({ isLoadingReply }),
     dismissReply: () => set({ pendingReply: null, triggerText: null }),
     // Magic Search

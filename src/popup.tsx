@@ -10,10 +10,10 @@ function Popup() {
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
-    chrome.storage.local.get("meetflow_token", (res) => {
+    chrome.storage.local.get("meetflow_token", (res: { meetflow_token?: string }) => {
       setTokenState(res.meetflow_token ?? null);
     });
-    chrome.storage.session.get("activeMeetingId", (res) => {
+    chrome.storage.session.get("activeMeetingId", (res: { activeMeetingId?: string }) => {
       setActiveMeeting(res.activeMeetingId ?? null);
     });
   }, []);

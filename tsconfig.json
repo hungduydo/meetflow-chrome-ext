@@ -17,7 +17,8 @@
     "resolveJsonModule": true,
     "types": [
       "vite/client",
-      "node"
+      "node",
+      "chrome"
     ],
     "baseUrl": ".",
     "paths": {
