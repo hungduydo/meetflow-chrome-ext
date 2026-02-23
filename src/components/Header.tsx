@@ -1,12 +1,12 @@
-// src/components/Header.tsx
 import { useMeetFlowStore } from "../store/index.js";
 import styles from "./Header.module.css";
+import { version } from "../../package.json";
 
 const STATUS_LABEL: Record<string, string> = {
-  idle:       "Ready",
+  idle: "Ready",
   connecting: "Connecting…",
-  live:       "LIVE",
-  error:      "Error",
+  live: "LIVE",
+  error: "Error",
 };
 
 export function Header() {
@@ -18,6 +18,7 @@ export function Header() {
         <div className={styles.logo}>
           <span className={styles.logoMark}>M</span>
           <span className={styles.logoText}>eetFlow</span>
+          <span className={styles.version}>v{version}</span>
         </div>
         <div className={styles.statusBadge} data-status={streamStatus}>
           {streamStatus === "live" && <span className={styles.liveDot} />}

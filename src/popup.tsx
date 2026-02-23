@@ -1,6 +1,6 @@
-// src/popup.tsx — Extension action popup
 import { StrictMode, useEffect, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { version } from "../package.json";
 import "./styles/globals.css";
 
 function Popup() {
@@ -42,7 +42,7 @@ function Popup() {
       {/* Header */}
       <div style={popupStyles.header}>
         <span style={popupStyles.logo}>MeetFlow <span style={{ color: "var(--accent)" }}>AI</span></span>
-        <span style={popupStyles.version}>v1.0</span>
+        <span style={popupStyles.version}>v{version}</span>
       </div>
 
       {/* Status */}

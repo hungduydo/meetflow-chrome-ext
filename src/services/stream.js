@@ -33,12 +33,17 @@ export class AudioStreamService {
                 video: false,
             });
             // Merge both streams into AudioContext
-            const ctx = new AudioContext({ sampleRate: 16000 });
+            const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
             const dest = ctx.createMediaStreamDestination();
+            dest.channelCount = 1; // Force mono for better STT recognition
             if (tabAudio) {
                 ctx.createMediaStreamSource(tabAudio).connect(dest);
             }
             ctx.createMediaStreamSource(micAudio).connect(dest);
+            // AudioContext often starts suspended in browsers
+            if (ctx.state === "suspended") {
+                await ctx.resume();
+            }
             this.combinedStream = dest.stream;
             await this.connectWebSocket();
             this.startMediaRecorder();
@@ -50,17 +55,30 @@ export class AudioStreamService {
     }
     async captureTabAudio() {
         try {
-            // getDisplayMedia captures tab audio including Meet participants
+            // getDisplayMedia requires video: true to show the picker.
+            // systemAudio: "include" hints to Chrome to show the system audio checkbox.
             const stream = await navigator.mediaDevices.getDisplayMedia({
-                video: false,
-                audio: { echoCancellation: false, noiseSuppression: false },
+                video: true,
+                audio: {
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false,
+                    // systemAudio is a non-standard hint for some Chrome versions
+                },
+                // @ts-ignore - non-standard Chrome hint
+                systemAudio: "include",
             });
-            // User selected a tab/screen — filter video tracks
+            // User selected a tab/screen — filter video tracks to save bandwidth/CPU
             stream.getVideoTracks().forEach((t) => t.stop());
+            // Check if user actually shared audio
+            if (stream.getAudioTracks().length === 0) {
+                stream.getTracks().forEach((t) => t.stop());
+                return null;
+            }
             return stream;
         }
-        catch {
-            // User denied screen share — fall back to mic-only
+        catch (err) {
+            console.warn("[MeetFlow] System audio capture denied or failed:", err);
             return null;
         }
     }
@@ -113,9 +131,22 @@ export class AudioStreamService {
             mimeType,
             audioBitsPerSecond: 16000,
         });
+        console.log(`[MeetFlow] MediaRecorder started with mimeType: ${this.mediaRecorder.mimeType}`);
+        let sendQueue = Promise.resolve();
         this.mediaRecorder.ondataavailable = (e) => {
             if (e.data.size > 0 && this.ws?.readyState === WebSocket.OPEN) {
-                e.data.arrayBuffer().then((buf) => this.ws?.send(buf));
+                // Sequentially queue the ArrayBuffer conversion and sending
+                sendQueue = sendQueue.then(async () => {
+                    try {
+                        if (this.ws?.readyState === WebSocket.OPEN) {
+                            const buf = await e.data.arrayBuffer();
+                            this.ws.send(buf); // ArrayBuffer directly
+                        }
+                    }
+                    catch (err) {
+                        console.error("[MeetFlow] Error sending audio chunk:", err);
+                    }
+                });
             }
         };
         this.mediaRecorder.start(CHUNK_INTERVAL_MS);
