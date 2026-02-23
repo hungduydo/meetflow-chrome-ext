@@ -1,0 +1,153 @@
+/* src/components/Sidebar.module.css */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-base);
+  border-left: 1px solid var(--border);
+  overflow: hidden;
+}
+
+/* Tab bar */
+.tabs {
+  display: flex;
+  background: var(--bg-surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--tab-height);
+  padding: 0 4px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  font-family: var(--font-ui);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  position: relative;
+}
+.tab:hover { color: var(--text-secondary); background: var(--bg-raised); }
+
+.tabActive {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  background: rgba(0,229,160,0.04);
+}
+
+.tabLabel { display: block; }
+.tabShort { display: none; }
+
+/* Panel area — fills remaining space */
+.panelArea {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Footer controls */
+.footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.startBtn, .stopBtn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border: none;
+}
+
+.startBtn {
+  background: var(--accent);
+  color: var(--bg-base);
+  letter-spacing: 0.3px;
+}
+.startBtn:hover:not(:disabled) {
+  opacity: 0.88;
+  box-shadow: var(--shadow-accent);
+}
+.startBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.startDot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--bg-base);
+  flex-shrink: 0;
+}
+
+.connectSpinner {
+  width: 12px; height: 12px;
+  border: 2px solid rgba(10,14,19,0.3);
+  border-top-color: var(--bg-base);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.stopBtn {
+  background: rgba(244,63,94,0.12);
+  border: 1px solid rgba(244,63,94,0.35);
+  color: var(--red);
+}
+.stopBtn:hover { background: rgba(244,63,94,0.2); }
+
+.stopSquare {
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  background: var(--red);
+  flex-shrink: 0;
+}
+
+.searchFab {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 10px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.searchFab:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.searchFab:disabled { opacity: 0.35; cursor: not-allowed; }
+.searchFab kbd {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--text-muted);
+}

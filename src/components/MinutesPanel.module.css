@@ -1,0 +1,107 @@
+/* src/components/MinutesPanel.module.css */
+.panel { display: flex; flex-direction: column; height: 100%; overflow-y: auto; }
+
+/* Empty */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 48px 24px; text-align: center; }
+.emptyIcon { color: var(--text-muted); opacity: 0.5; margin-bottom: 4px; }
+.empty p   { font-size: 12px; color: var(--text-secondary); line-height: 1.6; max-width: 220px; }
+.emptySub  { font-size: 11px !important; color: var(--text-muted) !important; }
+.generateBtn {
+  display: flex; align-items: center; gap: 7px;
+  margin-top: 8px;
+  padding: 9px 20px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--bg-base);
+  cursor: pointer;
+  transition: opacity 0.15s;
+  animation: glow-pulse 2s ease infinite;
+}
+.generateBtn:hover:not(:disabled) { opacity: 0.88; }
+.generateBtn:disabled { opacity: 0.4; cursor: not-allowed; animation: none; }
+
+/* Loading */
+.loading { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 60px 24px; }
+.loadingRing {
+  width: 32px; height: 32px;
+  border: 2.5px solid var(--border-hi);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading p    { font-size: 13px; color: var(--text-secondary); }
+.loadingSub   { font-size: 11px !important; color: var(--text-muted) !important; }
+
+/* Minutes content */
+.minutes { display: flex; flex-direction: column; }
+.minutesHeader {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  position: sticky; top: 0; background: var(--bg-base); z-index: 1;
+}
+.minutesTitle { font-size: 12px; font-weight: 700; color: var(--text-primary); letter-spacing: 0.3px; }
+.minutesActions { display: flex; gap: 6px; }
+.actionBtn {
+  display: flex; align-items: center; gap: 4px;
+  padding: 4px 10px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-ui);
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.actionBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+.section { padding: 14px; border-bottom: 1px solid var(--border); }
+.sectionTitle {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+.titleDot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.sectionBody { font-size: 12.5px; color: var(--text-primary); line-height: 1.7; }
+
+/* Action items */
+.actionList { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+.actionItem { display: flex; align-items: flex-start; gap: 8px; }
+.checkbox {
+  width: 13px; height: 13px; border-radius: 3px;
+  border: 1.5px solid var(--border-hi);
+  flex-shrink: 0; margin-top: 2px;
+}
+.actionBody  { display: flex; flex-direction: column; gap: 3px; }
+.actionTask  { font-size: 12.5px; color: var(--text-primary); line-height: 1.5; }
+.actionMeta  { display: flex; gap: 8px; }
+.assignee    { font-size: 10px; color: var(--accent); font-weight: 600; }
+.dueDate     { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+
+/* Decisions */
+.decisionList { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+.decisionItem { padding: 8px 10px; background: var(--bg-raised); border-radius: var(--radius-sm); border-left: 2px solid var(--purple); }
+.decisionText { font-size: 12.5px; color: var(--text-primary); line-height: 1.5; margin-bottom: 4px; }
+.decisionCtx  { font-size: 11px; color: var(--text-muted); line-height: 1.4; }
+
+/* Topics */
+.topics { display: flex; flex-wrap: wrap; gap: 6px; }
+.topic {
+  padding: 3px 10px;
+  background: rgba(245,158,11,0.1);
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 20px;
+  font-size: 11px;
+  color: var(--amber);
+  font-weight: 500;
+}

@@ -1,0 +1,97 @@
+/* src/components/SmartReplyPanel.module.css */
+.panel { display: flex; flex-direction: column; height: 100%; overflow-y: auto; padding: 14px; gap: 12px; }
+
+/* Loading state */
+.loading { display: flex; flex-direction: column; gap: 10px; padding: 20px 0; }
+.loadingBar {
+  height: 2px;
+  background: var(--bg-raised);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.loadingFill {
+  height: 100%;
+  width: 40%;
+  background: var(--accent);
+  border-radius: 1px;
+  animation: shimmer 1.4s ease-in-out infinite;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent), var(--accent-dim));
+  background-size: 200% 100%;
+}
+.loadingText { font-size: 11px; color: var(--text-muted); text-align: center; }
+
+/* Trigger quote */
+.trigger {
+  padding: 8px 12px;
+  border-left: 2px solid var(--accent);
+  background: var(--accent-glow);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  margin-bottom: 4px;
+}
+.triggerLabel { font-size: 10px; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 3px; }
+.triggerText  { font-size: 12px; color: var(--text-secondary); font-style: italic; line-height: 1.5; }
+
+/* Reply card */
+.replyCard { display: flex; flex-direction: column; gap: 10px; }
+
+.variants { display: flex; flex-direction: column; gap: 8px; }
+
+.variantBtn {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: all 0.15s ease;
+  width: 100%;
+}
+.variantBtn:hover {
+  border-color: var(--accent);
+  background: var(--bg-overlay);
+  box-shadow: var(--shadow-accent);
+}
+
+.variantHeader { display: flex; align-items: center; gap: 6px; }
+.variantIcon   { font-size: 13px; flex-shrink: 0; }
+.variantLabel  { font-size: 11px; font-weight: 700; color: var(--text-primary); text-transform: uppercase; letter-spacing: 0.5px; }
+.variantDesc   { font-size: 10px; color: var(--text-muted); }
+.copyHint      { font-size: 10px; color: var(--accent); margin-left: auto; opacity: 0; transition: opacity 0.15s; }
+.variantBtn:hover .copyHint { opacity: 1; }
+
+.variantText {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  padding-left: 2px;
+}
+
+.dismissBtn {
+  align-self: center;
+  padding: 5px 16px;
+  font-size: 11px;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-ui);
+}
+.dismissBtn:hover { color: var(--text-secondary); border-color: var(--border-hi); }
+
+/* Idle state */
+.idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 48px 24px;
+  text-align: center;
+}
+.idleIcon { color: var(--text-muted); opacity: 0.5; margin-bottom: 4px; }
+.idle p    { font-size: 12px; color: var(--text-secondary); line-height: 1.6; max-width: 230px; }
+.idleSub   { font-size: 11px !important; color: var(--text-muted) !important; }
