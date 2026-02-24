@@ -27,35 +27,31 @@ export class AudioStreamService {
     private onEvent: (event: StreamEvent) => void
   ) { }
 
-  // ── T1.3: Capture both system audio (tab) + microphone ─────────────────────
   async startCapture(): Promise<void> {
     try {
-      // System audio via tabCapture (called from background.ts via message)
-      // In content script context, we use getDisplayMedia as fallback
-      const tabAudio = await this.captureTabAudio();
+      // const tabAudio = await this.captureTabAudio();
       const micAudio = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
-          sampleRate: 16000, // Deepgram optimal
+          sampleRate: 16000,
         },
         video: false,
       });
 
-      // Merge both streams into AudioContext
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      // Merge both streams via AudioContext
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({
+        sampleRate: 16000,
+      });
       const dest = ctx.createMediaStreamDestination();
-      dest.channelCount = 1; // Force mono for better STT recognition
+      dest.channelCount = 1; // mono for STT
 
-      if (tabAudio) {
-        ctx.createMediaStreamSource(tabAudio).connect(dest);
-      }
+      // if (tabAudio) {
+      //   ctx.createMediaStreamSource(tabAudio).connect(dest);
+      // }
       ctx.createMediaStreamSource(micAudio).connect(dest);
 
-      // AudioContext often starts suspended in browsers
-      if (ctx.state === "suspended") {
-        await ctx.resume();
-      }
+      if (ctx.state === "suspended") await ctx.resume();
 
       this.combinedStream = dest.stream;
 
@@ -69,29 +65,21 @@ export class AudioStreamService {
 
   private async captureTabAudio(): Promise<MediaStream | null> {
     try {
-      // getDisplayMedia requires video: true to show the picker.
-      // systemAudio: "include" hints to Chrome to show the system audio checkbox.
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: true,
+        video: false,
         audio: {
           echoCancellation: false,
           noiseSuppression: false,
           autoGainControl: false,
-          // systemAudio is a non-standard hint for some Chrome versions
-        } as any,
-        // @ts-ignore - non-standard Chrome hint
+        },
+        // @ts-ignore — non-standard Chrome hint
         systemAudio: "include",
       });
-
-      // User selected a tab/screen — filter video tracks to save bandwidth/CPU
       stream.getVideoTracks().forEach((t) => t.stop());
-
-      // Check if user actually shared audio
       if (stream.getAudioTracks().length === 0) {
         stream.getTracks().forEach((t) => t.stop());
         return null;
       }
-
       return stream;
     } catch (err) {
       console.warn("[MeetFlow] System audio capture denied or failed:", err);
@@ -99,7 +87,6 @@ export class AudioStreamService {
     }
   }
 
-  // ── B1.1: WebSocket connection with reconnect logic ─────────────────────────
   private connectWebSocket(): Promise<void> {
     return new Promise((resolve, reject) => {
       const url = `${WS_URL}/ws/stream?meetingId=${this.meetingId}&token=${encodeURIComponent(this.token)}`;
@@ -111,17 +98,14 @@ export class AudioStreamService {
         this.onEvent({ type: "connected" });
         resolve();
       };
-
       this.ws.onerror = (e) => {
         this.onEvent({ type: "error", message: "WebSocket error" });
         reject(e);
       };
-
       this.ws.onclose = () => {
         this.onEvent({ type: "disconnected" });
         this.attemptReconnect();
       };
-
       this.ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data as string) as StreamEvent;
@@ -140,38 +124,43 @@ export class AudioStreamService {
     this.reconnectTimer = setTimeout(() => this.connectWebSocket(), delay);
   }
 
-  // ── Send audio chunks as binary frames ────────────────────────────────────
   private startMediaRecorder(): void {
     if (!this.combinedStream) return;
 
-    // Use audio/webm;codecs=opus — good compression, Deepgram-compatible
-    const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-      ? "audio/webm;codecs=opus"
-      : "audio/webm";
+    const PREFERRED_TYPES = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+    ];
+    const mimeType = PREFERRED_TYPES.find((t) => MediaRecorder.isTypeSupported(t))
+      ?? "audio/webm";
 
     this.mediaRecorder = new MediaRecorder(this.combinedStream, {
       mimeType,
-      audioBitsPerSecond: 16000,
+      audioBitsPerSecond: 32_000, // FIX 5: was 16_000 — too low, caused corrupt chunks
     });
 
-    console.log(`[MeetFlow] MediaRecorder started with mimeType: ${this.mediaRecorder.mimeType}`);
+    console.log(`[MeetFlow] MediaRecorder mimeType: ${this.mediaRecorder.mimeType}`);
 
-    let sendQueue: Promise<void> = Promise.resolve();
+    let sendQueue = Promise.resolve();
 
     this.mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size > 0 && this.ws?.readyState === WebSocket.OPEN) {
-        // Sequentially queue the ArrayBuffer conversion and sending
-        sendQueue = sendQueue.then(async () => {
-          try {
-            if (this.ws?.readyState === WebSocket.OPEN) {
-              const buf = await e.data.arrayBuffer();
-              this.ws.send(buf); // ArrayBuffer directly
-            }
-          } catch (err) {
-            console.error("[MeetFlow] Error sending audio chunk:", err);
+      if (e.data.size === 0) return;
+
+      console.log(`[MeetFlow] Audio chunk: ${e.data.size} bytes`); // remove after debugging
+
+      if (this.ws?.readyState !== WebSocket.OPEN) return;
+
+      // Queue sequential sends to preserve chunk order
+      sendQueue = sendQueue.then(async () => {
+        try {
+          if (this.ws?.readyState === WebSocket.OPEN) {
+            const buf = await e.data.arrayBuffer();
+            this.ws.send(buf);
           }
-        });
-      }
+        } catch (err) {
+          console.error("[MeetFlow] Error sending audio chunk:", err);
+        }
+      });
     };
 
     this.mediaRecorder.start(CHUNK_INTERVAL_MS);

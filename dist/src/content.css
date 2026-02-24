@@ -1,7 +1,0 @@
-/* src/content.css — injected into meet.google.com */
-/* Minimal global styles — avoid overriding Meet's own styles */
-
-#meetflow-sidebar-root {
-  font-family: 'Syne', -apple-system, BlinkMacSystemFont, sans-serif;
-  -webkit-font-smoothing: antialiased;
-}
