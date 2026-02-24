@@ -43,9 +43,14 @@ export function Sidebar() {
         setStreamStatus("connecting");
         try {
             // Create meeting in backend
-            const meetUrl = window.location.href;
+            // FIX: sidebar runs in an iframe — window.location is the extension's
+            // sidebar.html URL, not the Meet tab URL. Read from the parent via
+            // postMessage or fall back to a sensible default.
+            const meetUrl = (window.parent !== window)
+                ? document.referrer || "https://meet.google.com"
+                : window.location.href;
             const meeting = await meetingsApi.create(token, {
-                title: document.title.replace("- Google Meet", "").trim() || "Google Meet",
+                title: "Google Meet",
                 googleMeetUrl: meetUrl,
             });
             setMeetingId(meeting.id);
@@ -62,6 +67,13 @@ export function Sidebar() {
                 }
                 else if (event.type === "transcript") {
                     addSegment(event.data);
+                    // FIX: auto-switch to transcript tab so user can see segments appear
+                    // (only on first final segment to avoid fighting user's tab choice)
+                    if (event.data.isFinal) {
+                        const { activeTab } = useMeetFlowStore.getState();
+                        if (activeTab !== "transcript")
+                            setActiveTab("transcript");
+                    }
                     // Detect questions directed at user — trigger Smart Reply (B2.2)
                     if (event.data.isFinal) {
                         const text = event.data.text.toLowerCase();
@@ -97,18 +109,25 @@ export function Sidebar() {
     };
     // ── Stop meeting ──────────────────────────────────────────────────────────
     const stopMeeting = async () => {
-        await streamService?.stop();
+        // FIX: capture ref + null it BEFORE awaiting stop().
+        // Awaiting first means the WS onclose fires during the await window,
+        // calls onEvent("disconnected"), and the reconnect loop restarts — 
+        // which is exactly the "stop → 2s → back to live" bug.
+        const svc = streamService;
         streamService = null;
         setStreamStatus("idle");
         setMeetingId(null);
+        await svc?.stop(); // stop() now sees stopped=true so onclose is a no-op
     };
     const isLive = streamStatus === "live";
     const isConnecting = streamStatus === "connecting";
+    // "error" state should show Start button so user can retry
+    const showStart = !isLive && !isConnecting;
     return (_jsxs("div", { className: styles.sidebar, children: [_jsx(Header, {}), _jsx("div", { className: styles.tabs, role: "tablist", children: TABS.map((tab) => (_jsxs("button", { role: "tab", "aria-selected": activeTab === tab.id, className: clsx(styles.tab, activeTab === tab.id && styles.tabActive), onClick: () => {
                         setActiveTab(tab.id);
                         if (tab.id === "search")
                             setMagicSearchOpen(true);
-                    }, children: [_jsx("span", { className: styles.tabLabel, children: tab.label }), _jsx("span", { className: styles.tabShort, children: tab.shortLabel })] }, tab.id))) }), _jsxs("div", { className: styles.panelArea, children: [activeTab === "transcript" && _jsx(TranscriptPanel, {}), activeTab === "replies" && _jsx(SmartReplyPanel, {}), activeTab === "docs" && _jsx(DocumentsPanel, {}), activeTab === "minutes" && _jsx(MinutesPanel, {})] }), _jsxs("div", { className: styles.footer, children: [!isLive && !isConnecting && (_jsxs("button", { className: styles.startBtn, onClick: startMeeting, disabled: !token, children: [_jsx("span", { className: styles.startDot }), "Start Recording"] })), isConnecting && (_jsxs("button", { className: styles.startBtn, disabled: true, children: [_jsx("span", { className: styles.connectSpinner }), "Connecting\u2026"] })), isLive && (_jsxs("button", { className: styles.stopBtn, onClick: stopMeeting, children: [_jsx("span", { className: styles.stopSquare }), "Stop Recording"] })), _jsxs("button", { className: styles.searchFab, onClick: () => setMagicSearchOpen(true), title: "Magic Search (\u2318K)", disabled: !meetingId, children: [_jsx(SearchIcon, {}), _jsx("kbd", { children: "\u2318K" })] })] }), _jsx(MagicSearch, {})] }));
+                    }, children: [_jsx("span", { className: styles.tabLabel, children: tab.label }), _jsx("span", { className: styles.tabShort, children: tab.shortLabel })] }, tab.id))) }), _jsxs("div", { className: styles.panelArea, children: [activeTab === "transcript" && _jsx(TranscriptPanel, {}), activeTab === "replies" && _jsx(SmartReplyPanel, {}), activeTab === "docs" && _jsx(DocumentsPanel, {}), activeTab === "minutes" && _jsx(MinutesPanel, {})] }), _jsxs("div", { className: styles.footer, children: [showStart && (_jsxs("button", { className: styles.startBtn, onClick: startMeeting, disabled: !token, children: [_jsx("span", { className: styles.startDot }), "Start Recording"] })), isConnecting && (_jsxs("button", { className: styles.startBtn, disabled: true, children: [_jsx("span", { className: styles.connectSpinner }), "Connecting\u2026"] })), isLive && (_jsxs("button", { className: styles.stopBtn, onClick: stopMeeting, children: [_jsx("span", { className: styles.stopSquare }), "Stop Recording"] })), _jsxs("button", { className: styles.searchFab, onClick: () => setMagicSearchOpen(true), title: "Magic Search (\u2318K)", disabled: !meetingId, children: [_jsx(SearchIcon, {}), _jsx("kbd", { children: "\u2318K" })] })] }), _jsx(MagicSearch, {})] }));
 }
 function SearchIcon() {
     return (_jsxs("svg", { width: "13", height: "13", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2.5", children: [_jsx("circle", { cx: "11", cy: "11", r: "8" }), _jsx("line", { x1: "21", y1: "21", x2: "16.65", y2: "16.65" })] }));

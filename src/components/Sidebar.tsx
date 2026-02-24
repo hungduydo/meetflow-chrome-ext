@@ -17,10 +17,10 @@ let streamService: AudioStreamService | null = null;
 
 const TABS = [
   { id: "transcript", label: "Transcript", shortLabel: "TX" },
-  { id: "replies",    label: "Replies",    shortLabel: "AI" },
-  { id: "search",     label: "Search",     shortLabel: "⌘K" },
-  { id: "docs",       label: "Docs",       shortLabel: "📎" },
-  { id: "minutes",    label: "Minutes",    shortLabel: "📝" },
+  { id: "replies", label: "Replies", shortLabel: "AI" },
+  { id: "search", label: "Search", shortLabel: "⌘K" },
+  { id: "docs", label: "Docs", shortLabel: "📎" },
+  { id: "minutes", label: "Minutes", shortLabel: "📝" },
 ] as const;
 
 export function Sidebar() {
@@ -56,9 +56,14 @@ export function Sidebar() {
 
     try {
       // Create meeting in backend
-      const meetUrl = window.location.href;
+      // FIX: sidebar runs in an iframe — window.location is the extension's
+      // sidebar.html URL, not the Meet tab URL. Read from the parent via
+      // postMessage or fall back to a sensible default.
+      const meetUrl = (window.parent !== window)
+        ? document.referrer || "https://meet.google.com"
+        : window.location.href;
       const meeting = await meetingsApi.create(token, {
-        title: document.title.replace("- Google Meet", "").trim() || "Google Meet",
+        title: "Google Meet",
         googleMeetUrl: meetUrl,
       });
       setMeetingId(meeting.id);
@@ -73,6 +78,12 @@ export function Sidebar() {
           setStreamStatus("error");
         } else if (event.type === "transcript") {
           addSegment(event.data);
+          // FIX: auto-switch to transcript tab so user can see segments appear
+          // (only on first final segment to avoid fighting user's tab choice)
+          if (event.data.isFinal) {
+            const { activeTab } = useMeetFlowStore.getState();
+            if (activeTab !== "transcript") setActiveTab("transcript");
+          }
 
           // Detect questions directed at user — trigger Smart Reply (B2.2)
           if (event.data.isFinal) {
@@ -110,14 +121,21 @@ export function Sidebar() {
 
   // ── Stop meeting ──────────────────────────────────────────────────────────
   const stopMeeting = async () => {
-    await streamService?.stop();
+    // FIX: capture ref + null it BEFORE awaiting stop().
+    // Awaiting first means the WS onclose fires during the await window,
+    // calls onEvent("disconnected"), and the reconnect loop restarts — 
+    // which is exactly the "stop → 2s → back to live" bug.
+    const svc = streamService;
     streamService = null;
     setStreamStatus("idle");
     setMeetingId(null);
+    await svc?.stop(); // stop() now sees stopped=true so onclose is a no-op
   };
 
   const isLive = streamStatus === "live";
   const isConnecting = streamStatus === "connecting";
+  // "error" state should show Start button so user can retry
+  const showStart = !isLive && !isConnecting;
 
   return (
     <div className={styles.sidebar}>
@@ -145,14 +163,14 @@ export function Sidebar() {
       {/* Panel area */}
       <div className={styles.panelArea}>
         {activeTab === "transcript" && <TranscriptPanel />}
-        {activeTab === "replies"    && <SmartReplyPanel />}
-        {activeTab === "docs"       && <DocumentsPanel />}
-        {activeTab === "minutes"    && <MinutesPanel />}
+        {activeTab === "replies" && <SmartReplyPanel />}
+        {activeTab === "docs" && <DocumentsPanel />}
+        {activeTab === "minutes" && <MinutesPanel />}
       </div>
 
       {/* Footer: Start / Stop controls */}
       <div className={styles.footer}>
-        {!isLive && !isConnecting && (
+        {showStart && (
           <button
             className={styles.startBtn}
             onClick={startMeeting}

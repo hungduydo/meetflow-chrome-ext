@@ -1,6 +1,6 @@
 {
   "name": "meetflow-extension",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "MeetFlow AI Chrome Extension — real-time meeting transcription and AI co-pilot",
   "private": true,
   "scripts": {
