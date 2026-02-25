@@ -62,24 +62,59 @@ export class AudioStreamService {
     }
   }
 
-  private async captureTabAudio(): Promise<MediaStream | null> {
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: false,
-        audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
-        // @ts-ignore
-        systemAudio: "include",
-      });
-      stream.getVideoTracks().forEach((t) => t.stop());
-      if (stream.getAudioTracks().length === 0) {
-        stream.getTracks().forEach((t) => t.stop());
-        return null;
+  private captureTabAudio(): Promise<MediaStream | null> {
+    return new Promise((resolve) => {
+      if (!chrome.tabCapture) {
+        console.warn("[MeetFlow] tabCapture API not available");
+        resolve(null);
+        return;
       }
-      return stream;
-    } catch (err) {
-      console.warn("[MeetFlow] System audio capture failed:", err);
-      return null;
-    }
+
+      chrome.tabCapture.capture(
+        {
+          audio: true,
+          video: false
+        },
+        (stream) => {
+          if (chrome.runtime.lastError) {
+            console.warn(
+              "[MeetFlow] tabCapture failed:",
+              chrome.runtime.lastError.message
+            );
+            resolve(null);
+            return;
+          }
+
+          if (!stream) {
+            console.warn("[MeetFlow] No stream returned");
+            resolve(null);
+            return;
+          }
+
+          const audioTracks = stream.getAudioTracks();
+          if (audioTracks.length === 0) {
+            console.warn("[MeetFlow] No audio tracks in captured stream");
+            stream.getTracks().forEach(t => t.stop());
+            resolve(null);
+            return;
+          }
+
+          // Optional: đảm bảo audio clean (Chrome thường ignore nhưng để rõ intent)
+          audioTracks.forEach(track => {
+            // @ts-ignore
+            if (track.applyConstraints) {
+              track.applyConstraints({
+                echoCancellation: false,
+                noiseSuppression: false,
+                autoGainControl: false
+              }).catch(() => { });
+            }
+          });
+
+          resolve(stream);
+        }
+      );
+    });
   }
 
   private connectWebSocket(): Promise<void> {
