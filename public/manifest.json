@@ -15,7 +15,8 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://meet.google.com/*"
+    "https://meet.google.com/*",
+    "https://www.youtube.com/*"
   ],
   "background": {
     "service_worker": "src/background.js",
@@ -24,7 +25,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://meet.google.com/*"
+        "https://meet.google.com/*",
+        "https://www.youtube.com/*"
       ],
       "js": [
         "src/content.js"
@@ -50,7 +52,8 @@
         "assets/*"
       ],
       "matches": [
-        "https://meet.google.com/*"
+        "https://meet.google.com/*",
+        "https://www.youtube.com/*"
       ]
     }
   ]

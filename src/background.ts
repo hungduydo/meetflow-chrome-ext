@@ -15,7 +15,7 @@ async function setToken(token: string): Promise<void> {
 
 // ── Message handler ───────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(
-  (msg: ExtMessage, _sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void): boolean | undefined => {
+  (msg: ExtMessage, sender: chrome.runtime.MessageSender, sendResponse: (response?: unknown) => void): boolean | undefined => {
     if (msg.type === "GET_AUTH_TOKEN") {
       getToken().then(sendResponse);
       return true; // keep channel open for async response
@@ -33,6 +33,26 @@ chrome.runtime.onMessage.addListener(
 
     if (msg.type === "MEETING_ENDED") {
       chrome.storage.session.remove("activeMeetingId");
+    }
+
+    // MV3: chrome.tabCapture.capture() is not allowed from extension iframes.
+    // The sidebar sends GET_TAB_STREAM_ID; we call getMediaStreamId() here
+    // (service worker context) and return the stream ID to the caller.
+    // The sidebar then passes it to getUserMedia() with chromeMediaSource: "tab".
+    if (msg.type === "GET_TAB_STREAM_ID") {
+      const tabId = sender.tab?.id;
+      if (!tabId) {
+        sendResponse({ error: "No tab ID — message must come from a tab" });
+        return;
+      }
+      chrome.tabCapture.getMediaStreamId({ targetTabId: tabId }, (streamId) => {
+        if (chrome.runtime.lastError) {
+          sendResponse({ error: chrome.runtime.lastError.message });
+        } else {
+          sendResponse({ streamId });
+        }
+      });
+      return true; // keep channel open for the async callback
     }
   }
 );

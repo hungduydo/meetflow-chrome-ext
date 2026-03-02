@@ -62,4 +62,9 @@ export type ExtMessage =
   | { type: "AUTH_TOKEN"; token: string }
   | { type: "GET_AUTH_TOKEN" }
   | { type: "TOGGLE_SIDEBAR" }
-  | { type: "SIDEBAR_READY" };
+  | { type: "SIDEBAR_READY" }
+  // MV3: tabCapture.capture() is forbidden from extension iframes.
+  // The sidebar requests a MediaStream ID from the service worker, which
+  // calls chrome.tabCapture.getMediaStreamId() and sends it back.
+  // The sidebar then passes the ID to getUserMedia() directly.
+  | { type: "GET_TAB_STREAM_ID" };

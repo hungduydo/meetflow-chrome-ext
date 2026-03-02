@@ -2,7 +2,14 @@
 import type { TranscriptSegment } from "../types/index.js";
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? "ws://localhost:3001";
-const CHUNK_INTERVAL_MS = 250;
+
+// Deepgram's live streaming API accepts raw PCM (linear16) reliably.
+// MediaRecorder produces a WebM container (EBML header + Segment + Clusters)
+// which is a pre-recorded container format — Deepgram's streaming endpoint
+// can't parse it and closes the connection immediately with no transcript.
+// ScriptProcessorNode captures raw Float32 samples which we convert to Int16
+// (linear16) and stream directly; no container overhead, no format ambiguity.
+const PCM_BUFFER_SIZE = 4096; // samples per chunk; 4096 / 16000 Hz = 256 ms
 
 export type StreamEvent =
   | { type: "transcript"; data: TranscriptSegment }
@@ -12,18 +19,17 @@ export type StreamEvent =
 
 export class AudioStreamService {
   private ws: WebSocket | null = null;
-  private mediaRecorder: MediaRecorder | null = null;
+  private scriptProcessor: ScriptProcessorNode | null = null;
+  private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private silentGain: GainNode | null = null;
   private combinedStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private reconnectAttempts = 0;
   private readonly maxReconnects = 5;
 
-  // FIX 1: explicit stopped flag — root cause of "stop → 2s → back to recording".
-  // When stop() closes the WS, ws.onclose fires and calls attemptReconnect().
-  // Without this flag nothing distinguishes a deliberate stop from a network
-  // drop, so reconnect fires, WS reopens, "connected" event fires, and the UI
-  // flips back to "live" ~2 seconds later.
+  // FIX 1: explicit stopped flag — prevents the "stop → 2 s → back to live"
+  // bug where ws.onclose would fire during stop() and trigger a reconnect.
   private stopped = false;
 
   constructor(
@@ -41,13 +47,13 @@ export class AudioStreamService {
         video: false,
       });
 
-      // FIX 2: store AudioContext so we can close() it in stop() and fully
-      // release audio hardware (stops the browser recording indicator).
+      // FIX 2: store AudioContext so close() fully releases audio hardware.
       this.audioContext = new (window.AudioContext ||
         (window as any).webkitAudioContext)({ sampleRate: 16000 });
-      const dest = this.audioContext.createMediaStreamDestination();
-      dest.channelCount = 1; // mono for STT
 
+      // Mix tab + mic into a single mono stream via MediaStreamDestination.
+      const dest = this.audioContext.createMediaStreamDestination();
+      dest.channelCount = 1;
       if (tabAudio) this.audioContext.createMediaStreamSource(tabAudio).connect(dest);
       this.audioContext.createMediaStreamSource(micAudio).connect(dest);
 
@@ -55,63 +61,54 @@ export class AudioStreamService {
 
       this.combinedStream = dest.stream;
       await this.connectWebSocket();
-      this.startMediaRecorder();
+      this.startPCMCapture();
     } catch (err) {
       this.onEvent({ type: "error", message: (err as Error).message });
       throw err;
     }
   }
 
+  // MV3: chrome.tabCapture.capture() is blocked from extension iframes.
+  // We ask the background service worker for a MediaStream ID via
+  // getMediaStreamId(), then pass it to getUserMedia() here.
   private captureTabAudio(): Promise<MediaStream | null> {
     return new Promise((resolve) => {
-      if (!chrome.tabCapture) {
-        console.warn("[MeetFlow] tabCapture API not available");
-        resolve(null);
-        return;
-      }
-
-      chrome.tabCapture.capture(
-        {
-          audio: true,
-          video: false
-        },
-        (stream) => {
-          if (chrome.runtime.lastError) {
+      chrome.runtime.sendMessage(
+        { type: "GET_TAB_STREAM_ID" },
+        (resp: { streamId?: string; error?: string } | null) => {
+          if (chrome.runtime.lastError || !resp?.streamId) {
             console.warn(
-              "[MeetFlow] tabCapture failed:",
-              chrome.runtime.lastError.message
+              "[MeetFlow] tabCapture stream ID failed:",
+              resp?.error ?? chrome.runtime.lastError?.message
             );
             resolve(null);
             return;
           }
 
-          if (!stream) {
-            console.warn("[MeetFlow] No stream returned");
-            resolve(null);
-            return;
-          }
-
-          const audioTracks = stream.getAudioTracks();
-          if (audioTracks.length === 0) {
-            console.warn("[MeetFlow] No audio tracks in captured stream");
-            stream.getTracks().forEach(t => t.stop());
-            resolve(null);
-            return;
-          }
-
-          // Optional: đảm bảo audio clean (Chrome thường ignore nhưng để rõ intent)
-          audioTracks.forEach(track => {
-            // @ts-ignore
-            if (track.applyConstraints) {
-              track.applyConstraints({
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false
-              }).catch(() => { });
-            }
-          });
-
-          resolve(stream);
+          navigator.mediaDevices
+            .getUserMedia({
+              audio: {
+                // @ts-ignore — chromeMediaSource is a Chrome-specific constraint
+                mandatory: {
+                  chromeMediaSource: "tab",
+                  chromeMediaSourceId: resp.streamId,
+                },
+              },
+              video: false,
+            } as MediaStreamConstraints)
+            .then((stream) => {
+              const audioTracks = stream.getAudioTracks();
+              if (audioTracks.length === 0) {
+                stream.getTracks().forEach(t => t.stop());
+                resolve(null);
+                return;
+              }
+              resolve(stream);
+            })
+            .catch((err: Error) => {
+              console.warn("[MeetFlow] Tab audio getUserMedia failed:", err.message);
+              resolve(null);
+            });
         }
       );
     });
@@ -135,7 +132,7 @@ export class AudioStreamService {
       };
 
       this.ws.onclose = () => {
-        // FIX 1: only reconnect when we have NOT deliberately stopped
+        // FIX 1: only reconnect on unexpected disconnect, not deliberate stop
         if (!this.stopped) {
           this.onEvent({ type: "disconnected" });
           this.attemptReconnect();
@@ -146,7 +143,7 @@ export class AudioStreamService {
         try {
           const msg = JSON.parse(event.data as string) as StreamEvent;
           this.onEvent(msg);
-        } catch { /* ignore */ }
+        } catch { /* ignore binary or malformed frames */ }
       };
     });
   }
@@ -160,37 +157,58 @@ export class AudioStreamService {
     }, delay);
   }
 
-  private startMediaRecorder(): void {
-    if (!this.combinedStream) return;
+  // Capture raw PCM audio via ScriptProcessorNode and stream as linear16.
+  //
+  // Why not MediaRecorder?
+  //   MediaRecorder outputs audio/webm — a container format (EBML header +
+  //   WebM Segment + Cluster elements). Deepgram's live streaming endpoint
+  //   expects raw encoded audio without a container wrapper. When it receives
+  //   WebM bytes it cannot parse them and closes the connection immediately,
+  //   producing no transcript regardless of the `encoding` parameter used.
+  //
+  // Why ScriptProcessorNode (deprecated)?
+  //   AudioWorkletNode is the modern replacement but requires loading a
+  //   separate worklet module URL, which is cumbersome in a Chrome Extension
+  //   iframe. ScriptProcessorNode is deprecated but still fully supported in
+  //   all Chromium versions and works without extra setup.
+  private startPCMCapture(): void {
+    if (!this.combinedStream || !this.audioContext) return;
 
-    const PREFERRED = ["audio/webm;codecs=opus", "audio/webm"];
-    const mimeType = PREFERRED.find((t) => MediaRecorder.isTypeSupported(t)) ?? "audio/webm";
+    this.sourceNode = this.audioContext.createMediaStreamSource(this.combinedStream);
 
-    this.mediaRecorder = new MediaRecorder(this.combinedStream, {
-      mimeType,
-      audioBitsPerSecond: 32_000,
-    });
+    // 1 input channel (mono), 1 output channel
+    this.scriptProcessor = this.audioContext.createScriptProcessor(PCM_BUFFER_SIZE, 1, 1);
 
-    console.log(`[MeetFlow] MediaRecorder mimeType: ${this.mediaRecorder.mimeType}`);
+    this.scriptProcessor.onaudioprocess = (e) => {
+      if (this.stopped || this.ws?.readyState !== WebSocket.OPEN) return;
 
-    let sendQueue = Promise.resolve();
+      const float32 = e.inputBuffer.getChannelData(0);
 
-    this.mediaRecorder.ondataavailable = (e) => {
-      if (e.data.size === 0 || this.stopped) return;
-      if (this.ws?.readyState !== WebSocket.OPEN) return;
-      sendQueue = sendQueue.then(async () => {
-        try {
-          if (!this.stopped && this.ws?.readyState === WebSocket.OPEN) {
-            const buf = await e.data.arrayBuffer();
-            this.ws.send(buf);
-          }
-        } catch (err) {
-          console.error("[MeetFlow] Chunk send error:", err);
-        }
-      });
+      // Convert Float32 [-1, 1] → Int16 [-32768, 32767] (little-endian linear16)
+      const int16 = new Int16Array(float32.length);
+      for (let i = 0; i < float32.length; i++) {
+        const clamped = Math.max(-1, Math.min(1, float32[i]));
+        int16[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7FFF;
+      }
+
+      try {
+        this.ws!.send(int16.buffer);
+      } catch (err) {
+        console.error("[MeetFlow] PCM send error:", err);
+      }
     };
 
-    this.mediaRecorder.start(CHUNK_INTERVAL_MS);
+    // ScriptProcessor must be connected to the audio graph (including
+    // destination) for onaudioprocess to fire. Use a zero-gain node so the
+    // combined audio is NOT played back through the device speakers.
+    this.silentGain = this.audioContext.createGain();
+    this.silentGain.gain.value = 0;
+
+    this.sourceNode.connect(this.scriptProcessor);
+    this.scriptProcessor.connect(this.silentGain);
+    this.silentGain.connect(this.audioContext.destination);
+
+    console.log("[MeetFlow] PCM capture started (linear16 @ 16 kHz, 4096-sample chunks)");
   }
 
   async stop(): Promise<void> {
@@ -202,10 +220,13 @@ export class AudioStreamService {
       this.reconnectTimer = null;
     }
 
-    if (this.mediaRecorder && this.mediaRecorder.state !== "inactive") {
-      this.mediaRecorder.stop();
-    }
-    this.mediaRecorder = null;
+    // Disconnect PCM capture nodes before closing the AudioContext
+    this.scriptProcessor?.disconnect();
+    this.scriptProcessor = null;
+    this.sourceNode?.disconnect();
+    this.sourceNode = null;
+    this.silentGain?.disconnect();
+    this.silentGain = null;
 
     this.combinedStream?.getTracks().forEach((t) => t.stop());
     this.combinedStream = null;

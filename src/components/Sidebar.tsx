@@ -68,6 +68,11 @@ export function Sidebar() {
       });
       setMeetingId(meeting.id);
 
+      // Track whether we've already auto-switched to the transcript tab once
+      // this session — reset each time a new meeting starts so the first
+      // segment always surfaces the transcript.
+      let hasAutoSwitched = false;
+
       // Open audio stream + STT
       streamService = new AudioStreamService(meeting.id, token, (event) => {
         if (event.type === "connected") {
@@ -78,11 +83,13 @@ export function Sidebar() {
           setStreamStatus("error");
         } else if (event.type === "transcript") {
           addSegment(event.data);
-          // FIX: auto-switch to transcript tab so user can see segments appear
-          // (only on first final segment to avoid fighting user's tab choice)
-          if (event.data.isFinal) {
+          // Auto-switch to transcript on the FIRST final segment only.
+          // Without the guard this fires on every segment, fighting any tab
+          // switch made by Smart Reply (which opens the "replies" tab).
+          if (event.data.isFinal && !hasAutoSwitched) {
             const { activeTab } = useMeetFlowStore.getState();
             if (activeTab !== "transcript") setActiveTab("transcript");
+            hasAutoSwitched = true;
           }
 
           // Detect questions directed at user — trigger Smart Reply (B2.2)
