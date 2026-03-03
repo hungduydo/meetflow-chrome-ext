@@ -22,6 +22,11 @@ export class AudioStreamService {
   private scriptProcessor: ScriptProcessorNode | null = null;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
   private silentGain: GainNode | null = null;
+  // Source streams must be stored separately — stop() on combinedStream only
+  // stops the destination node's output tracks, NOT the original input tracks,
+  // leaving the OS-level "recording" indicator active until the tab closes.
+  private tabStream: MediaStream | null = null;
+  private micStream: MediaStream | null = null;
   private combinedStream: MediaStream | null = null;
   private audioContext: AudioContext | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -41,9 +46,9 @@ export class AudioStreamService {
   async startCapture(): Promise<void> {
     this.stopped = false;
     try {
-      const tabAudio = await this.captureTabAudio();
-      const micAudio = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, sampleRate: 16000 },
+      this.tabStream = await this.captureTabAudio();
+      this.micStream = await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: false, noiseSuppression: false, sampleRate: 16000 },
         video: false,
       });
 
@@ -54,8 +59,8 @@ export class AudioStreamService {
       // Mix tab + mic into a single mono stream via MediaStreamDestination.
       const dest = this.audioContext.createMediaStreamDestination();
       dest.channelCount = 1;
-      if (tabAudio) this.audioContext.createMediaStreamSource(tabAudio).connect(dest);
-      this.audioContext.createMediaStreamSource(micAudio).connect(dest);
+      if (this.tabStream) this.audioContext.createMediaStreamSource(this.tabStream).connect(dest);
+      this.audioContext.createMediaStreamSource(this.micStream).connect(dest);
 
       if (this.audioContext.state === "suspended") await this.audioContext.resume();
 
@@ -71,19 +76,52 @@ export class AudioStreamService {
   // MV3: chrome.tabCapture.capture() is blocked from extension iframes.
   // We ask the background service worker for a MediaStream ID via
   // getMediaStreamId(), then pass it to getUserMedia() here.
+  async startCaptureTabOnly(): Promise<void> {
+    this.stopped = false;
+    try {
+      this.tabStream = await this.captureTabAudio();
+      if (!this.tabStream) throw new Error("Tab audio capture unavailable");
+
+      this.audioContext = new (window.AudioContext ||
+        (window as any).webkitAudioContext)({ sampleRate: 16000 });
+
+      const dest = this.audioContext.createMediaStreamDestination();
+      dest.channelCount = 1;
+      this.audioContext.createMediaStreamSource(this.tabStream).connect(dest);
+
+      if (this.audioContext.state === "suspended") await this.audioContext.resume();
+
+      this.combinedStream = dest.stream;
+      await this.connectWebSocket();
+      this.startPCMCapture();
+    } catch (err) {
+      this.onEvent({ type: "error", message: (err as Error).message });
+      throw err;
+    }
+  }
+
   private captureTabAudio(): Promise<MediaStream | null> {
-    return new Promise((resolve) => {
-      chrome.runtime.sendMessage(
-        { type: "GET_TAB_STREAM_ID" },
-        (resp: { streamId?: string; error?: string } | null) => {
-          if (chrome.runtime.lastError || !resp?.streamId) {
-            console.warn(
-              "[MeetFlow] tabCapture stream ID failed:",
-              resp?.error ?? chrome.runtime.lastError?.message
-            );
-            resolve(null);
-            return;
-          }
+    return new Promise((resolve, reject) => {
+      // chrome.runtime.id is undefined when the extension context has been
+      // invalidated (e.g. after an extension reload). Detect this early so we
+      // can surface a clear "reload the page" message instead of a cryptic error.
+      if (!chrome?.runtime?.id) {
+        reject(new Error("Extension context lost — please reload this page and try again."));
+        return;
+      }
+
+      try {
+        chrome.runtime.sendMessage(
+          { type: "GET_TAB_STREAM_ID" },
+          (resp: { streamId?: string; error?: string } | null) => {
+            if (chrome.runtime.lastError || !resp?.streamId) {
+              console.warn(
+                "[MeetFlow] tabCapture stream ID failed:",
+                resp?.error ?? chrome.runtime.lastError?.message
+              );
+              resolve(null);
+              return;
+            }
 
           navigator.mediaDevices
             .getUserMedia({
@@ -109,8 +147,11 @@ export class AudioStreamService {
               console.warn("[MeetFlow] Tab audio getUserMedia failed:", err.message);
               resolve(null);
             });
-        }
-      );
+          }
+        );
+      } catch (err) {
+        reject(err instanceof Error ? err : new Error(String(err)));
+      }
     });
   }
 
@@ -200,7 +241,7 @@ export class AudioStreamService {
 
     // ScriptProcessor must be connected to the audio graph (including
     // destination) for onaudioprocess to fire. Use a zero-gain node so the
-    // combined audio is NOT played back through the device speakers.
+    // ScriptProcessor output path stays silent.
     this.silentGain = this.audioContext.createGain();
     this.silentGain.gain.value = 0;
 
@@ -228,6 +269,12 @@ export class AudioStreamService {
     this.silentGain?.disconnect();
     this.silentGain = null;
 
+    // Stop the original source tracks — these are what hold the OS-level
+    // recording indicator open. combinedStream only holds destination tracks.
+    this.tabStream?.getTracks().forEach((t) => t.stop());
+    this.tabStream = null;
+    this.micStream?.getTracks().forEach((t) => t.stop());
+    this.micStream = null;
     this.combinedStream?.getTracks().forEach((t) => t.stop());
     this.combinedStream = null;
 

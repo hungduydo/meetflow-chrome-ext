@@ -33,8 +33,14 @@ function Popup() {
     setTokenInput("");
   };
 
-  const openMeet = () => {
-    chrome.tabs.create({ url: "https://meet.google.com" });
+  const openTranscript = () => {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tab = tabs[0];
+      if (tab?.id) {
+        chrome.tabs.sendMessage(tab.id, { type: "TOGGLE_SIDEBAR" });
+        window.close();
+      }
+    });
   };
 
   return (
@@ -82,13 +88,13 @@ function Popup() {
 
       {/* Actions */}
       <div style={popupStyles.actions}>
-        <button style={popupStyles.primaryBtn} onClick={openMeet}>
-          Open Google Meet
+        <button style={popupStyles.primaryBtn} onClick={openTranscript}>
+          Open Transcript
         </button>
       </div>
 
       <p style={popupStyles.footer}>
-        Join a Meet call to activate the sidebar
+        Works on any tab with audio — YouTube, Meet, podcasts, and more
       </p>
     </div>
   );

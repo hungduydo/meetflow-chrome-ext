@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "MeetFlow AI",
-  "version": "1.0.0",
-  "description": "Real-time AI co-pilot for Google Meet — transcription, smart replies, and meeting insights.",
+  "version": "1.0.2",
+  "description": "Real-time AI transcription and co-pilot for any browser tab — meetings, YouTube, lectures, and more.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -15,8 +15,7 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://meet.google.com/*",
-    "https://www.youtube.com/*"
+    "<all_urls>"
   ],
   "background": {
     "service_worker": "src/background.js",
@@ -25,8 +24,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://meet.google.com/*",
-        "https://www.youtube.com/*"
+        "<all_urls>"
       ],
       "js": [
         "src/content.js"
@@ -52,8 +50,7 @@
         "assets/*"
       ],
       "matches": [
-        "https://meet.google.com/*",
-        "https://www.youtube.com/*"
+        "<all_urls>"
       ]
     }
   ]

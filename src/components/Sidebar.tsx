@@ -60,10 +60,14 @@ export function Sidebar() {
       // sidebar.html URL, not the Meet tab URL. Read from the parent via
       // postMessage or fall back to a sensible default.
       const meetUrl = (window.parent !== window)
-        ? document.referrer || "https://meet.google.com"
+        ? document.referrer || window.location.href
         : window.location.href;
+      const title = (() => {
+        try { return new URL(meetUrl).hostname || "Tab Recording"; }
+        catch { return "Tab Recording"; }
+      })();
       const meeting = await meetingsApi.create(token, {
-        title: "Google Meet",
+        title,
         googleMeetUrl: meetUrl,
       });
       setMeetingId(meeting.id);
@@ -86,28 +90,28 @@ export function Sidebar() {
           // Auto-switch to transcript on the FIRST final segment only.
           // Without the guard this fires on every segment, fighting any tab
           // switch made by Smart Reply (which opens the "replies" tab).
-          if (event.data.isFinal && !hasAutoSwitched) {
-            const { activeTab } = useMeetFlowStore.getState();
-            if (activeTab !== "transcript") setActiveTab("transcript");
-            hasAutoSwitched = true;
-          }
+          // if (event.data.isFinal && !hasAutoSwitched) {
+          //   const { activeTab } = useMeetFlowStore.getState();
+          //   if (activeTab !== "transcript") setActiveTab("transcript");
+          //   hasAutoSwitched = true;
+          // }
 
-          // Detect questions directed at user — trigger Smart Reply (B2.2)
-          if (event.data.isFinal) {
-            const text = event.data.text.toLowerCase();
-            const isQuestion = text.includes("?") && (
-              text.includes("you think") ||
-              text.includes("your view") ||
-              text.includes("do you") ||
-              text.includes("what about you") ||
-              text.includes("can you")
-            );
-            if (isQuestion) triggerSmartReply(meeting.id, event.data.text);
-          }
+          // // Detect questions directed at user — trigger Smart Reply (B2.2)
+          // if (event.data.isFinal) {
+          //   const text = event.data.text.toLowerCase();
+          //   const isQuestion = text.includes("?") && (
+          //     text.includes("you think") ||
+          //     text.includes("your view") ||
+          //     text.includes("do you") ||
+          //     text.includes("what about you") ||
+          //     text.includes("can you")
+          //   );
+          //   if (isQuestion) triggerSmartReply(meeting.id, event.data.text);
+          // }
         }
       });
 
-      await streamService.startCapture();
+      await streamService.startCaptureTabOnly();
     } catch (err) {
       setStreamStatus("error");
       console.error("[MeetFlow] Start failed:", err);
